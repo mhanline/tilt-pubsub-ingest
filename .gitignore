@@ -1,0 +1,8 @@
+.vscode
+*.pem
+bin/
+lib/
+lib64/
+include/
+pyvenv.cfg
+.env.yaml
