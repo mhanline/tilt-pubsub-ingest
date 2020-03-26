@@ -7,10 +7,10 @@ $GOOGLE_CLOUD_PROJECT environment variable should be set to your active project 
 i.e. after using the command: gcloud config set project <projectID>
 
 1. Create a new project and assign a billing account.
- Note: This should utilise the GCP free tier but you will still need a valid credit card in case your app goes over the free tier
 ```
-gcloud projects create tilt-test-001
+gcloud projects create <project ID>
 ```
+Enable billing. You will need a credit card for billing, however Cloud Functions has a pretty generous free tier. 
 Clone the project:
 ```
 git clone https://github.com/mhanline/tilt-pubsub-ingest.git
