@@ -4,5 +4,6 @@ bin/
 lib/
 lib64/
 include/
+keys/
 pyvenv.cfg
 .env.yaml
