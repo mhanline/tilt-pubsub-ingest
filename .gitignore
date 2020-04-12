@@ -8,3 +8,7 @@ include/
 keys/
 pyvenv.cfg
 .env.yaml
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+terraform.tfvars

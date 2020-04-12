@@ -1,0 +1,6 @@
+project-id = ""
+pubsub-topic = ""
+iotcore-region = "us-central1"
+registry-name = ""
+device-name = "my-device2"
+bq-region = "us-west2"

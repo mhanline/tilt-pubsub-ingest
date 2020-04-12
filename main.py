@@ -72,7 +72,7 @@ def tilt_rcv_messages(event, context):
          `timestamp` field contains the publish time.
     """
     logger.debug(f"Event: {event}\n DEBUG context: {context}")
-    logger.info(f"This Function was triggered by messageId: {context.event_id}\
+    logger.debug(f"This Function was triggered by messageId: {context.event_id}\
     published at: {context.timestamp}")
     try:
         raw_message = tilt_gateway_pb2.tiltmsg().FromString(
@@ -93,7 +93,6 @@ def tilt_rcv_messages(event, context):
     logger.debug(f"Publish timestamp = {context.timestamp}, currtime = {currentTime}")
     try:
         write_to_sheet(
-            currentTime,
             raw_message,
             event['attributes']['deviceId'],
             idOfSheet)
@@ -105,7 +104,6 @@ def tilt_rcv_messages(event, context):
             event['attributes']['deviceId'],
             event['attributes']['deviceRegistryId'],
             event['attributes']['deviceRegistryLocation'],
-            "2000-05-16 18:12:47.145482+00",
             currentTime,
             raw_message
         )
@@ -119,9 +117,9 @@ def send_to_bq(
         deviceId,
         deviceRegistryId,
         deviceRegistryLocation,
-        deviceLogTime,
         cloudLogTime,
         message):
+    utctimestamp = datetime.utcfromtimestamp(message.timeStamp).strftime('%Y-%m-%d %H:%M:%S')
     data = f'{{"messageId": \
     "{messageId}", \
     "deviceId": \
@@ -131,7 +129,7 @@ def send_to_bq(
     "deviceLogTime": \
     "{deviceLogTime}", \
     "cloudLogTime": \
-    "{cloudLogTime}", \
+    "{utctimestamp}", \
     "specificGravity": \
     "{round(message.specificGravity,3)}", \
     "colour": \
@@ -181,7 +179,6 @@ def send_to_bq(
 
 
 def write_to_sheet(
-        loggedTime,
         message,
         deviceId,
         sheetID):
@@ -190,7 +187,7 @@ def write_to_sheet(
     range_name = message.colour_type.Name(message.colour) + '!A1:C2'
     values = {
         'values': [
-            [loggedTime.strftime("%d/%m/%Y %H:%M:%S"), round(message.specificGravity,3), round(message.temperature,1)]
+            [datetime.utcfromtimestamp(message.timeStamp).strftime("%d/%m/%Y %H:%M:%S"), round(message.specificGravity,3), round(message.temperature,1)]
         ]
     }
     try:
