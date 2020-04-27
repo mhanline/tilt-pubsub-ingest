@@ -14,7 +14,6 @@
 
 # Inbuilt modules
 import sys
-import pytz
 from base64 import b64decode
 from os import environ
 from ast import literal_eval
@@ -22,6 +21,7 @@ from datetime import datetime
 from io import StringIO
 from google.cloud import logging as cloudlogging
 import logging
+from dateutil.tz import gettz
 
 # Local modules
 import tilt_gateway_pb2
@@ -71,15 +71,21 @@ def tilt_rcv_messages(event, context):
          metadata. The `event_id` field contains the Pub/Sub message ID. The
          `timestamp` field contains the publish time.
     """
-    logger.debug(f"Event: {event}\n DEBUG context: {context}")
-    logger.debug(f"This Function was triggered by messageId: {context.event_id}\
-    published at: {context.timestamp}")
+    logger.debug(f"Event: {event}")
+    # logger.debug(f"This Function was triggered by messageId: {context.event_id}\
+    # published at: {context.timestamp}")
     try:
         raw_message = tilt_gateway_pb2.tiltmsg().FromString(
             b64decode(event['data']))
         logger.debug(f'Raw Message:\n{raw_message}')
+        if raw_message.ByteSize() > 1:
+            logger.debug(f"BS: {raw_message.ByteSize()}")
+        else:
+            raise Exception("Skipping. Not a protobuf message")
+        # print(f"BS: {raw_message.ByteSize()}")
+        # print(f"Isinit: {raw_message.IsInitialized()}")
     except Exception as e:
-        logger.critical(f"Unable to decode PubSub data.\n\
+        logger.debug(f"Unable to decode PubSub data.\n\
         Message: {e}\nException: {sys.exc_info()[0]}")
         return
     try:
@@ -89,13 +95,14 @@ def tilt_rcv_messages(event, context):
         logger.critical("Unable to match device with a valid Google Sheet ID")
         raise Exception("No matching device to SheetID or timezone")
     logger.debug(f"Device ID {event['attributes']['deviceId']}")
-    currentTime = datetime.now(pytz.timezone(localTZ))
-    logger.debug(f"Publish timestamp = {context.timestamp}, currtime = {currentTime}")
+    logger.debug(
+        f"Publish timestamp = {context.timestamp}")
     try:
         write_to_sheet(
             raw_message,
             event['attributes']['deviceId'],
-            idOfSheet)
+            idOfSheet,
+            localTZ)
     except Exception as e:
         logger.critical(f"Append to sheet failed: {e}")
     try:
@@ -104,9 +111,9 @@ def tilt_rcv_messages(event, context):
             event['attributes']['deviceId'],
             event['attributes']['deviceRegistryId'],
             event['attributes']['deviceRegistryLocation'],
-            currentTime,
+            context.timestamp,
             raw_message
-        )
+            )
     except Exception as e:
         logger.critical(f"Cannot write to BigQuery, error: {e}")
     return
@@ -119,7 +126,8 @@ def send_to_bq(
         deviceRegistryLocation,
         cloudLogTime,
         message):
-    utctimestamp = datetime.utcfromtimestamp(message.timeStamp).strftime('%Y-%m-%d %H:%M:%S')
+    utctimestamp = datetime.fromtimestamp(message.timeStamp).isoformat()
+    logger.debug(f"DEBUG UTCtimestamp: {utctimestamp}")
     data = f'{{"messageId": \
     "{messageId}", \
     "deviceId": \
@@ -127,15 +135,15 @@ def send_to_bq(
     "deviceRegistryId": \
     "{deviceRegistryId}", \
     "deviceLogTime": \
-    "{deviceLogTime}", \
+    "{utctimestamp}", \
     "cloudLogTime": \
     "{utctimestamp}", \
     "specificGravity": \
-    "{round(message.specificGravity,3)}", \
+    "{message.specificGravity / 1000}", \
     "colour": \
     "{message.colour_type.Name(message.colour)}", \
     "temperature": \
-    "{round(message.temperature,1)}", \
+    "{getTemp(deviceId, message.temperature)}", \
     "deviceRegistryLocation": \
     "{deviceRegistryLocation}"}}'
 
@@ -181,13 +189,19 @@ def send_to_bq(
 def write_to_sheet(
         message,
         deviceId,
-        sheetID):
+        sheetID,
+        localTimeZone):
     service = discovery.build('sheets', 'v4', cache_discovery=False)
+    # logger.debug(f"Sheet Colour Number: {message.colour}")
     logger.debug(f"Colour: {message.colour_type.Name(message.colour)}")
+    logger.debug(f"SGravity: {message.specificGravity}")
+    logger.debug(f"Temp: {message.temperature}")
+    logger.debug(f"Temp in locale: {getTemp(deviceId, message.temperature)}")
     range_name = message.colour_type.Name(message.colour) + '!A1:C2'
+    LogTime = datetime.fromtimestamp(message.timeStamp, gettz(localTimeZone))
     values = {
         'values': [
-            [datetime.utcfromtimestamp(message.timeStamp).strftime("%d/%m/%Y %H:%M:%S"), round(message.specificGravity,3), round(message.temperature,1)]
+            [LogTime.strftime("%d/%m/%Y %H:%M:%S"), (message.specificGravity / 1000), getTemp(deviceId, message.temperature)]
         ]
     }
     try:
@@ -200,3 +214,10 @@ def write_to_sheet(
         response = request.execute()
     except Exception as e:
         raise Exception("Cannot write to Google Sheet: {e}")
+
+
+def getTemp(deviceID, rawTemp):
+    if gateway_dict[deviceID]['degrees'] == 'celsius':
+        return round((rawTemp - 32) * 5/9, 1)
+    else:
+        return rawTemp
